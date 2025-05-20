@@ -1,23 +1,26 @@
 # Setting options ---------------------------------------------------------
-setwd("//nas.ads.mwn.de/go69hew/Paper/Heat-related health literacy/GitHub")
+setwd("//directory") # set your own working directory where file HRHLS_data.xslx is located
 options(scipen=999)
 options(digits=2)
 
 # Loading all packages -------------------------------------------------------
 library(readxl)
+library(sjPlot)
 library(lavaan)
 library(psych)
 library(dplyr)
-library(officer)
 library(flextable)
+library(officer)
+library(apaTables)
+library(ggcorrplot)
 library(semPlot)
 library(car)
 
-# Read data set -----------------------------------------------------------
+# Reading data set -----------------------------------------------------------
 data <- read_excel("HRHLS_Data.xlsx")
 View(data)
 
-# Outliers ----------------------------------------------------------------
+# Deleting outliers ----------------------------------------------------------------
 # Mahalanobis distance
 mahal <- mahalanobis(data[ , c(5:24)], colMeans(data [ , c(5:24)]), cov(data[ , c(5:24)])) 
 cutoff_mahal = qchisq(1-.001, ncol(data[ , c(5:24)])) 
@@ -38,29 +41,21 @@ plot(mahal, pch = 19, col = ifelse(mahal >= cutoff_mahal, "red", "black"),
      main = "Mahalanobis distances")
 abline(h = cutoff_mahal, col = "blue", lwd = 2)
 
-# Split new ---------------------------------------------------------------
-# Set the seed for reproducibility
+# Splitting the data set -------------------------------------------------
 seed <- 1111
 set.seed(seed)
 
 n <- nrow(data_clean)
-
-# Calculate half the size
 half_size <- floor(n / 2)
-
-# Randomly sample half of the indices
 indices <- sample(seq_len(n), size = half_size)
 
-# Create the two equally distributed samples
 sample1 <- data_clean[indices, ]
 sample2 <- data_clean[-indices, ]
 
-# Output the sizes for verification
 cat("Sample 1 Size:", nrow(sample1), "\n")
 cat("Sample 2 Size:", nrow(sample2), "\n")
 
 # Data sets ---------------------------------------------------------------
-
 HRHLd0 <- data_clean[,c("HRHL1", "HRHL2", "HRHL3", "HRHL4", "HRHL5", "HRHL6", "HRHL7", "HRHL8","HRHL9", 
                         "HRHL10", "HRHL11", "HRHL12","HRHL13", "HRHL14", "HRHL15", "HRHL16", "HRHL17", "HRHL18","HRHL19", "HRHL20")]
 
@@ -76,43 +71,19 @@ HRHLd1a <- sample1[,c("HRHL1", "HRHL2", "HRHL3", "HRHL4", "HRHL7", "HRHL8", "HRH
 HRHLd2a <- sample2[,c("HRHL1", "HRHL2", "HRHL3", "HRHL4", "HRHL7", "HRHL8", "HRHL9",
                     "HRHL10", "HRHL11", "HRHL13", "HRHL14", "HRHL15", "HRHL16", "HRHL18", "HRHL19", "HRHL20")]
 
-#Item difficulty
-library(sjPlot)
-tab <- tab_itemscale(HRHLd0)
-str(tab)
-# Convert df.list into a single data frame
-df <- do.call(rbind, tab$df.list)  # Bind all elements together
-
 # Descriptives and item difficulty --------------------------------------------
 table(data_clean$GENDER)
-library(psych)
 describe(data_clean$AGE)
 
-library(sjPlot)
 tab <- tab_itemscale(HRHLd0)
 str(tab)
-# Convert df.list into a single data frame
 df <- do.call(rbind, tab$df.list)  # Bind all elements together
-
-# Convert to flextable
-library(flextable)
 ft <- flextable(as.data.frame(df))
 
-# Create a Word document and add the table
-library(officer)
 doc <- read_docx()
 doc <- body_add_flextable(doc, value = ft)
 
-# Save the document
 print(doc, target = "itemscale_table_final.docx")
-
-#Correlations
-library(apaTables)
-correlationstable <- cbind(HRHL1=data$HRHL1,HRHL2=data$HRHL2,HRHL3=data$HRHL3,HRHL4=data$HRHL4,HRHL5=data$HRHL5,
-                           HRHL6=data$HRHL6,HRHL7=data$HRHL7,HRHL8=data$HRHL8,HRHL9=data$HRHL9,HRHL10=data$HRHL10,
-                           HRHL11=data$HRHL11,HRHL12=data$HRHL12,HRHL13=data$HRHL13,HRHL14=data$HRHL14,HRHL15=data$HRHL15,
-                           HRHL16=data$HRHL16,HRHL17=data$HRHL17,HRHL18=data$HRHL18,HRHL19=data$HRHL19,HRHL20=data$HRHL20)
-apa.cor.table(correlationstable, filename="Correlationstable.doc", table.number=1)
 
 # Cronbach's Alpha ------------------------------------------------
 alphaHRHL <- psych::alpha(HRHLd0)
@@ -121,13 +92,11 @@ summary(alphaHRHL)
 #Split half reliability
 splitHalf(HRHLd0)
 
-# EFA ------------------------------------------------------------
+# Exploratory factor analysis (EFA) -------------------------------------
 HRHLcor <- cor(HRHLd0,method ="spearman", use="p")
-library(ggcorrplot)
-ggcorrplot(corr = HRHLcor)
 
-#Descriptive analysis (data check): no outliers
-describe(HRHLd0) #normal distribution
+ggcorrplot(corr = HRHLcor)
+describe(HRHLd0)
 error.dots(x = HRHLd0,sort = F)
 error.bars(HRHLd0)
 
@@ -153,7 +122,7 @@ summary(efa4pa)
 efa4pa$e.values
 # 2 eigenvalues > 1
 
-# Kaiser-Dickman-Kriterium anwenden
+# Kaiser-Dickman Criterium
 num_components_kept <- sum(efa4pa$e.values > 1)
 num_components_kept
 
@@ -163,12 +132,9 @@ explained_variance_percentage
 cumulative_variance <- cumsum(explained_variance_percentage)
 cumulative_variance
 
-# Bootstrapping -----------------------------------------------------------
-
-# Parameters
+# Bootstrapping with Exploratory structural equation modeling (ESEM) -------------
 n_bootstraps <- 1000
 
-# Initialize storage for results
 items <- paste0("HRHL", 1:20)
 latent_vars <- c("F1", "F2", "F3", "F4")
 crossload_matrix <- matrix(0, nrow = length(items), ncol = n_bootstraps)
@@ -177,7 +143,6 @@ rownames(crossload_matrix) <- items
 
 loading_storage <- list()
 
-# === Bootstrapping Loop ===
 for (i in 1:n_bootstraps) {
   cat("Bootstrap iteration:", i, "\n")
   
@@ -185,7 +150,7 @@ for (i in 1:n_bootstraps) {
   sample_indices <- sample(1:nrow(HRHLd1), nrow(HRHLd1), replace = TRUE)
   boot_data <- HRHLd1[sample_indices, ]
   
-  # Run ESEM
+  # Run Exploratory structural equation modeling
   ESEM_4f <- fa(boot_data, nfact = 4, rotate = "promax", fm = "ml")
   ESEM_4f.loadmat <- zapsmall(matrix(round(ESEM_4f$loadings, 4), nrow = 20, ncol = 4))
   rownames(ESEM_4f.loadmat) <- items
@@ -225,8 +190,7 @@ for (k in 1:4) {
 
 print(ci_results)
 
-# === Step 3: CFA Model and Fit Measures ===
-# Build the model string
+# === Step 3: ESEM Model and Fit Measures ===
 terms <- vector()
 for (i in 1:4) {
   terms[i] <- paste0("F", i, "=~ ", 
@@ -234,24 +198,23 @@ for (i in 1:4) {
 }
 ESEM_f4 <- paste(terms, collapse = "\n")
 
-# Fit the CFA model
-ESEM4_1 <- cfa(ESEM_f4, data = HRHLd1, estimator = "MLR", missing='fiml')
+ESEM4 <- cfa(ESEM_f4, data = HRHLd1, estimator = "MLR", missing='fiml')
 
-fitmeasures(ESEM4_1, c("cfi.robust","tli.robust","rmsea.robust","srmr"))
-summary(ESEM4_1, fit.measures = T, standardized= T)
+fitmeasures(ESEM4, c("cfi.robust","tli.robust","rmsea.robust","srmr"))
+summary(ESEM4, fit.measures = T, standardized= T)
 
 # Confirmatory factor analysis (CFA) ------------------------------------------
-SEM2_3 <- "
+SEM <- "
 F1 =~ HRHL1 + HRHL2 + HRHL3 + HRHL4
 F2 =~ HRHL7 + HRHL8 + HRHL9 + HRHL10
 F3 =~ HRHL11 + HRHL13 + HRHL14 + HRHL15
 F4 =~ HRHL16 + HRHL18 + HRHL19 + HRHL20
 "
-fit2_3 <- cfa(SEM2_3,data=HRHLd2a,estimator = "MLR",missing='fiml')
-summary(fit2_3,standardized=TRUE,fit.measures=TRUE)
-fitmeasures(fit2_3)[c('cfi.robust', 'tli.robust','rmsea.robust','srmr')]
+fit <- cfa(SEM,data=HRHLd2a,estimator = "MLR",missing='fiml')
+summary(fit,standardized=TRUE,fit.measures=TRUE)
+fitmeasures(fit)[c('cfi.robust', 'tli.robust','rmsea.robust','srmr')]
 
-semPaths(object = fit2_3,
+semPaths(object = fit,
          residuals = FALSE,
          whatLabels = "std",
          edge.label.cex = 1,
@@ -260,49 +223,36 @@ semPaths(object = fit2_3,
          label.color = "black", 
          edge.color = "black")
 
-# Extract the standardized solutions
-std_estimates <- standardizedSolution(fit2_3)
+std_estimates <- standardizedSolution(fit)
 
-# Define items (HRHL1 to HRHL20)
 items <- paste0("HRHL", 1:20)
 
-# Define latent variables (F1, F2, F3, F4)
 latent_vars <- c("F1", "F2", "F3", "F4")
 
-# Initialize the data frame with the first column for Items
 table_data <- data.frame(Item = items)
 
-# Loop through each latent variable
 for (latent in latent_vars) {
-  # Create an empty vector to store the values
   std_values <- rep(NA, length(items))
   
-  # Loop through each item
   for (i in seq_along(items)) {
-    # Find the corresponding row in the std_estimates
     match_row <- std_estimates$rhs == items[i] & std_estimates$lhs == latent
     
-    # If a match is found, extract the value
     if (any(match_row)) {
       std_values[i] <- round(std_estimates$est.std[match_row], 1)
     }
   }
   
-  # Add the vector to the data frame as a new column for the latent variable
   table_data[[latent]] <- std_values
 }
 
-# Create the flextable
+
 flextable_object <- flextable(table_data)
 
-# Apply bold for values > 0.5 and italics if the item loads > 0.4 on more than one factor
 for (latent in latent_vars) {
-  # Bold if greater than 0.5
   flextable_object <- flextable_object %>%
     bold(j = latent, i = ~ data[[latent]] > 0.5, bold = TRUE)
 }
 
-# Check for cross-loading (more than one factor > 0.3)
 for (i in seq_len(nrow(table_data))) {
   count_above_0_4 <- sum(table_data[i, latent_vars] > 0.3, na.rm = TRUE)
   if (count_above_0_4 > 1) {
@@ -315,25 +265,22 @@ for (i in seq_len(nrow(table_data))) {
   }
 }
 
-# Create the Word document and add the table
 doc <- read_docx()
 doc <- body_add_flextable(doc, flextable_object)
-
-# Save the document
 print(doc, target = "CFA_Results.docx")
 
-# CFA whole data set ------------------------------------------
-SEM2_4 <- "
+# CFA with whole data set ------------------------------------------
+SEM2 <- "
 F1 =~ HRHL1 + HRHL2 + HRHL3 + HRHL4
 F2 =~ HRHL7 + HRHL8 + HRHL9 + HRHL10
 F3 =~ HRHL11 + HRHL13 + HRHL14 + HRHL15
 F4 =~ HRHL16 + HRHL18 + HRHL19 + HRHL20
 "
-fit2_4 <- cfa(SEM2_4,data=data_clean,estimator = "MLR",missing='fiml')
-summary(fit2_4,standardized=TRUE,fit.measures=TRUE)
-fitmeasures(fit2_4)[c('cfi.robust', 'tli.robust','rmsea.robust','srmr')]
+fit2 <- cfa(SEM2,data=data_clean,estimator = "MLR",missing='fiml')
+summary(fit2,standardized=TRUE,fit.measures=TRUE)
+fitmeasures(fit2)[c('cfi.robust', 'tli.robust','rmsea.robust','srmr')]
 
-semPaths(object = fit2_4,
+semPaths(object = fit2,
          residuals = FALSE,
          whatLabels = "std",
          edge.label.cex = 1,
@@ -342,19 +289,19 @@ semPaths(object = fit2_4,
          label.color = "black", 
          edge.color = "black")
 
-# CFA higher order factor without 5, 6, 12, 17 ----------------------------
-SEM2_6 <- "
+# CFA with higher order factor without items 5, 6, 12, 17 ----------------------------
+SEM3 <- "
 HRHL =~ F1 + F2 + F3 + F4
 F1 =~ HRHL1 + HRHL2 + HRHL3 + HRHL4
 F2 =~ HRHL7 + HRHL8 + HRHL9 + HRHL10
 F3 =~ HRHL11 + HRHL13 + HRHL14 + HRHL15
 F4 =~ HRHL16 + HRHL18 + HRHL19 + HRHL20
 "
-fit2_6 <- cfa(SEM2_6,data=data_clean,estimator = "MLR",missing='fiml')
-summary(fit2_6,standardized=TRUE,fit.measures=TRUE)
-fitmeasures(fit2_6)[c('cfi.robust', 'tli.robust','rmsea.robust','srmr')]
+fit3 <- cfa(SEM3,data=data_clean,estimator = "MLR",missing='fiml')
+summary(fit3,standardized=TRUE,fit.measures=TRUE)
+fitmeasures(fit3)[c('cfi.robust', 'tli.robust','rmsea.robust','srmr')]
 
-semPaths(object = fit2_6,
+semPaths(object = fit3,
          residuals = TRUE,
          whatLabels = "std",
          edge.label.cex = 1,
@@ -364,7 +311,7 @@ semPaths(object = fit2_6,
          edge.color = "black",
          intercepts = FALSE)
 
-# HRHL score ---------------------------------------------------------------
+# Heat-related health literacy score ---------------------------------------------------------------
 HRHLMean <- rowMeans(subset(data_clean, select=c(HRHL1, HRHL2, HRHL3, HRHL4, HRHL7, HRHL8, HRHL9, HRHL10, HRHL11,
                                                  HRHL13, HRHL14, HRHL15, HRHL16, HRHL18, HRHL19, HRHL20)))
 
@@ -380,8 +327,7 @@ table(HRHLIndex2)
 freq_tableHRHLIndex2 <- prop.table(table(HRHLIndex2)) * 100
 print(round(freq_tableHRHLIndex2, 2))
 
-# Scores KSum -------------------------------------------------------
-# Recode knowledge items und build sum score
+# Scores Knowledge -------------------------------------------------------
 data_clean <- data_clean %>%
   mutate(across(K1:K15, ~ ifelse(. == 1, 1, 0)))
 
@@ -403,215 +349,127 @@ split_value <- quantile(data_clean$KSum, 0.5, na.rm = TRUE)
 data_clean <- data_clean %>%
   mutate(KSumGroup = ifelse(KSum <= split_value, "Lower", "Upper"))
 
-table(data_clean$KSumGroup)
-
 # Validity ------------------------------------------------------
-
-# Check model
 model <- "
-F1 =~ HRHL1 + HRHL2 + HRHL3 + HRHL4 + HRHL5
-F2 =~ HRHL7 + HRHL10
-F3 =~ HRHL11 + HRHL13 + HRHL14 + HRHL15
-F4 =~ HRHL16 + HRHL17 + HRHL18 + HRHL19 + HRHL20
-HRHL =~ F1 + F2 + F3 + F4
-K =~ KSum
-A =~ A1 + A2 + A3 + A4 + A5 
-P =~ B1 + B2 + B3 + B4 + B5
-B =~ B6 + B7 + B8
-"
-
-fit <- sem(model,data=data_clean,estimator = "MLR",missing='fiml')
-summary(fit,standardized=TRUE,fit.measures=TRUE,rsquare=TRUE)
-fitmeasures(fit)[c("cfi.robust","tli.robust","rmsea.robust","srmr")]
-semPaths(fit,whatLabels="std",layout="tree")
-
-# Check for Regression
-model1 <- "
 AG =~ AGE
 GE =~ GENDER
-F1 =~ HRHL1 + HRHL2 + HRHL3 + HRHL4 + HRHL5
-F2 =~ HRHL7 + HRHL10
+F1 =~ HRHL1 + HRHL2 + HRHL3 + HRHL4
+F2 =~ HRHL6 + HRHL7 + HRHL8 + HRHL10
 F3 =~ HRHL11 + HRHL13 + HRHL14 + HRHL15
-F4 =~ HRHL16 + HRHL17 + HRHL18 + HRHL19 + HRHL20
-HL =~ F1 + F2 + F3 + F4
+F4 =~ HRHL16 + HRHL18 + HRHL19 + HRHL20
 K =~ KSum
 A =~ A1 + A2 + A3 + A4 + A5 
 P =~ B1 + B2 + B3 + B4 + B5
 B =~ B6 + B7 + B8
 "
 
-fit1 <- sem(model1,data=data_clean,estimator = "MLR",missing='fiml')
-summary(fit1,standardized=TRUE,fit.measures=TRUE,rsquare=TRUE)
-fitmeasures(fit1)[c("cfi.robust","tli.robust","rmsea.robust","srmr")]
+fit4 <- sem(model,data=data_clean,estimator = "MLR",missing='fiml')
+summary(fit4,standardized=TRUE,fit.measures=TRUE,rsquare=TRUE)
+fitmeasures(fit4)[c("cfi.robust","tli.robust","rmsea.robust","srmr")]
 
-semPaths(fit1,whatLabels="std",layout="tree")
-semPaths(object = fit1,
-         residuals = FALSE,
-         whatLabels = "std",
-         edge.label.cex = 1,
-         layout = "tree", rotation = 1,
-         label.color = "black", edge.color = "black")
-
-# Check subscales for Regression
-model2 <- "
-AG =~ AGE
-GE =~ GENDER
-F1 =~ HRHL1 + HRHL2 + HRHL3 + HRHL4 + HRHL5
-F2 =~ HRHL7 + HRHL10
-F3 =~ HRHL11 + HRHL13 + HRHL14 + HRHL15
-F4 =~ HRHL16 + HRHL17 + HRHL18 + HRHL19 + HRHL20
-K =~ KSum
-A =~ A1 + A2 + A3 + A4 + A5 
-P =~ B1 + B2 + B3 + B4 + B5
-B =~ B6 + B7 + B8
-"
-
-fit2 <- sem(model2,data=data_clean,estimator = "MLR",missing='fiml')
-summary(fit2,standardized=TRUE,fit.measures=TRUE,rsquare=TRUE)
-fitmeasures(fit2)[c("cfi.robust","tli.robust","rmsea.robust","srmr")]
-
-semPaths(fit2,whatLabels="std",layout="tree")
-semPaths(object = fit1,
-         residuals = FALSE,
-         whatLabels = "std",
-         edge.label.cex = 1,
-         layout = "tree", rotation = 1,
-         label.color = "black", edge.color = "black")
-
-# SES neu -----------------------------------------------------------------
-# Pakete laden
-library(dplyr)
-
-# Punktwert-Zuordnung für Einkommen
-punkte_einkommen <- function(einkommen) {
+# Socioeconomic status ---------------------------------------------------
+score_income <- function(income) {
   case_when(
-    einkommen < 708 ~ 1.0,
-    einkommen < 925 ~ 1.5,
-    einkommen < 1101 ~ 2.0,
-    einkommen < 1294 ~ 2.5,
-    einkommen < 1441 ~ 3.0,
-    einkommen < 1599 ~ 3.5,
-    einkommen < 1785 ~ 4.0,
-    einkommen < 1999 ~ 4.5,
-    einkommen < 2195 ~ 5.0,
-    einkommen < 2499 ~ 5.5,
-    einkommen < 2838 ~ 6.0,
-    einkommen < 3499 ~ 6.5,
+    income < 708 ~ 1.0,
+    income < 925 ~ 1.5,
+    income < 1101 ~ 2.0,
+    income < 1294 ~ 2.5,
+    income < 1441 ~ 3.0,
+    income < 1599 ~ 3.5,
+    income < 1785 ~ 4.0,
+    income < 1999 ~ 4.5,
+    income < 2195 ~ 5.0,
+    income < 2499 ~ 5.5,
+    income < 2838 ~ 6.0,
+    income < 3499 ~ 6.5,
     TRUE ~ 7.0
   )
 }
 
-# Punktwert-Kombination für Bildung (Q13 = schulische Bildung, Q14 = Berufsausbildung)
-punkte_bildung <- function(bildung, berufsausbildung) {
+score_education <- function(education, vocationaltraining) {
   case_when(
-    # Kein Schulabschluss & keine Berufsausbildung
-    bildung == 1 & berufsausbildung %in% c(1, 2) ~ 1.0,  
-    # Hauptschule ohne Berufsausbildung
-    bildung == 3 & berufsausbildung %in% c(1, 2) ~ 2.6,  
-    # Hauptschule + Lehre oder Berufsfachschule
-    bildung == 3 & berufsausbildung %in% c(3, 4) ~ 3.5,  
-    # Realschule ohne Berufsausbildung
-    bildung == 4 & berufsausbildung %in% c(1, 2) ~ 3.6,  
-    # Realschule + Lehre oder Berufsfachschule
-    bildung == 4 & berufsausbildung %in% c(3, 4) ~ 4.5,  
-    # Abitur ohne Berufsausbildung
-    bildung == 5 & berufsausbildung %in% c(1, 2) ~ 6.0,  
-    # Abitur + Fachhochschule/Fachschule
-    bildung == 5 & berufsausbildung %in% c(5, 6) ~ 6.5,  
-    # Abitur + Studium
-    bildung == 5 & berufsausbildung == 7 ~ 7.0,  
-    # Höchste Stufe (anderer Abschluss mit Studium)
+    education == 1 & vocationaltraining %in% c(1, 2) ~ 1.0,  
+    education == 3 & vocationaltraining %in% c(1, 2) ~ 2.6,  
+    education == 3 & vocationaltraining %in% c(3, 4) ~ 3.5,  
+    education == 4 & vocationaltraining %in% c(1, 2) ~ 3.6,  
+    education == 4 & vocationaltraining %in% c(3, 4) ~ 4.5,  
+    education == 5 & vocationaltraining %in% c(1, 2) ~ 6.0,  
+    education == 5 & vocationaltraining %in% c(5, 6) ~ 6.5,  
+    education == 5 & vocationaltraining == 7 ~ 7.0,  
     TRUE ~ 7.0  
   )
 }
 
-# Punktwert-Zuordnung für Berufliche Stellung (Q16) und Führungstätigkeit (Q17)
-punkte_berufliche_stellung <- function(stellung, fuehrung) {
+score_position <- function(position, lead) {
   base_points <- case_when(
-    stellung == 1 ~ 4.4,  # Angestellter (ohne Führung)
-    stellung == 2 ~ 2.1,  # Arbeiter
-    stellung == 3 ~ 6.7,  # Beamter
-    stellung == 4 ~ 1.0,  # Landwirt im Haupterwerb
-    stellung == 5 ~ 5.4,  # Selbstständig mit Mitarbeitern
-    stellung == 6 ~ 5.2,  # Selbstständig ohne Mitarbeiter
-    stellung == 7 ~ 3.8,  # Mithelfender Familienangehöriger
-    stellung == 8 ~ 1.0,  # Auszubildender
-    stellung == 9 ~ 1.0,  # Freiwilliger Wehrdienst/BFD
-    stellung == 10 ~ 1.0, # Freiwilliges Soziales Jahr
-    stellung == 11 ~ 1.0, # Noch nie erwerbstätig
-    TRUE ~ 3.8            # Sonstige
+    position == 1 ~ 4.4,  
+    position == 2 ~ 2.1,  
+    position == 3 ~ 6.7,  
+    position == 4 ~ 1.0,  
+    position == 5 ~ 5.4,  
+    position == 6 ~ 5.2,  
+    position == 7 ~ 3.8, 
+    position == 8 ~ 1.0,  
+    position == 9 ~ 1.0,  
+    position == 10 ~ 1.0, 
+    position == 11 ~ 1.0, 
+    TRUE ~ 3.8            
   )
   
-  # Führungsbonus gemäß Müters: nur Beamte mit Führung kommen auf 7.0
-  fuehrung_bonus <- case_when(
-    fuehrung == 1 & stellung != 3 ~ 1.2,  # Führungskraft mit Entscheidungsbefugnis (außer Beamte)
-    fuehrung == 2 & stellung != 3 ~ 0.3,  # Aufsichtskraft (außer Beamte)
-    fuehrung == 1 & stellung == 3 ~ 0.3,  # Beamte mit Führung → genau 7.0
-    fuehrung == 2 & stellung == 3 ~ 0.1,
+  lead_bonus <- case_when(
+    lead == 1 & position != 3 ~ 1.2,  
+    lead == 2 & position != 3 ~ 0.3,  
+    lead == 1 & position == 3 ~ 0.3, 
+    lead == 2 & position == 3 ~ 0.1,
     TRUE ~ 0.0
   )
   
-  punktwert <- base_points + fuehrung_bonus
+  points <- base_points + lead_bonus
 }
 
-# Berechnung der Punktwerte inklusive kombinierter Bildung
 data_clean <- data_clean %>%
   mutate(
-    SES_Einkommen = punkte_einkommen(Q18),
-    SES_Bildung = mapply(punkte_bildung, Q13, Q14), # Bildung kombiniert
-    SES_Beruf = mapply(punkte_berufliche_stellung, Q16, Q17), # Berufliche Stellung + Führung
-    SES_Gesamt = SES_Bildung + SES_Beruf # + SES_Einkommen
+    SES_income = score_income(Q18),
+    SES_education = mapply(score_education, Q13, Q14), 
+    SES_profession = mapply(score_position, Q16, Q17), 
+    SES_all = SES_education + SES_profession # + SES_income
   )
 
-describe(data_clean$SES_Gesamt)
+describe(data_clean$SES_all)
 
-# Berechnung der Perzentil-Schwellenwerte SES_Gesamt
-p20 <- quantile(data_clean$SES_Gesamt, probs = 0.20, na.rm = TRUE)
-p80 <- quantile(data_clean$SES_Gesamt, probs = 0.80, na.rm = TRUE)
+p20 <- quantile(data_clean$SES_all, probs = 0.20, na.rm = TRUE)
+p80 <- quantile(data_clean$SES_all, probs = 0.80, na.rm = TRUE)
 
-# Klassifizierung in "niedrig", "mittel" und "hoch"
-data_clean$SES_Kategorie <- cut(
-  data_clean$SES_Gesamt,
+data_clean$SES_category <- cut(
+  data_clean$SES_all,
   breaks = c(-Inf, p20, p80, Inf),
   labels = c("niedrig", "mittel", "hoch"),
   include.lowest = TRUE
 )
 
-# Ergebnis anzeigen
-table(data_clean$SES_Kategorie)
+table(data_clean$SES_category)
 
-# Berechnung der Perzentil-Schwellenwerte SES_Bildung
-p20b <- quantile(data_clean$SES_Bildung, probs = 0.20, na.rm = TRUE)
-p80b <- quantile(data_clean$SES_Bildung, probs = 0.80, na.rm = TRUE)
+p20b <- quantile(data_clean$SES_education, probs = 0.20, na.rm = TRUE)
+p80b <- quantile(data_clean$SES_education, probs = 0.80, na.rm = TRUE)
 
-# Prozentuale Verteilung des SES
-SESProzent <- data_clean %>%
-  group_by(SES_Kategorie) %>%
-  summarise(Anzahl = n()) %>%
-  mutate(Prozent = (Anzahl / sum(Anzahl)) * 100)
+SESprocentage <- data_clean %>%
+  group_by(SES_category) %>%
+  summarise(Frequency = n()) %>%
+  mutate(procentage = (Frequency / sum(Frequency)) * 100)
 
 # Ergebnis anzeigen
-print(SESProzent)
+print(SESprocentage)
 
 # Federal State -----------------------------------------------------------
-
-# Calculate the frequency table of the 'STATE' variable
 state_freq <- table(data_clean$STATE)
-
-# Convert the table into a data frame for easier manipulation
 state_freq_df <- as.data.frame(state_freq)
 
-# Sort the states alphabetically (1-16 order)
 state_freq_df <- state_freq_df[order(state_freq_df$Var1), ]
 
-# Rename the columns for clarity
 colnames(state_freq_df) <- c("Federal State", "Frequency")
 
-# Add a column for percentages
 state_freq_df$Percentage <- round((state_freq_df$Frequency / sum(state_freq_df$Frequency)) * 100, 1)
 
-# Add a sequential number column (1-16)
 state_freq_df$No <- seq(1, nrow(state_freq_df))
 
-# Print the result
 print(state_freq_df)
