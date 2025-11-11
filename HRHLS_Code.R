@@ -9,6 +9,8 @@ library(sjPlot)
 library(lavaan)
 library(psych)
 library(dplyr)
+library(tidyr)
+library(purrr)
 library(flextable)
 library(officer)
 library(apaTables)
@@ -41,6 +43,51 @@ plot(mahal, pch = 19, col = ifelse(mahal >= cutoff_mahal, "red", "black"),
      main = "Mahalanobis distances")
 abline(h = cutoff_mahal, col = "blue", lwd = 2)
 
+
+# Descriptive statictics --------------------------------------------------
+table(data_clean$GENDER)
+describe(data_clean$AGE)
+
+table(data_clean$Q13)
+table(data_clean$Q14)
+
+# Ensure HRHL items exist and select them
+items <- data_clean %>%
+  select(HRHL1:HRHL20)
+
+# Convert all items to numeric (if not already)
+items <- items %>%
+  mutate(across(everything(), ~as.numeric(as.character(.x))))
+
+# Check if values are within expected range (1-5)
+summary(items)
+
+# Function to compute frequency table for each item
+freq_table <- map_df(names(items), function(item) {
+  items %>%
+    count(Response = .data[[item]]) %>%
+    filter(!is.na(Response)) %>%  # exclude missing values
+    mutate(
+      Item = item,
+      Percent = round(100 * n / sum(n), 1)
+    )
+})
+
+# Pivot to wide format
+freq_table_wide <- freq_table %>%
+  mutate(Label = paste0(n, " (", Percent, "%)")) %>%
+  select(Item, Response, Label) %>%
+  pivot_wider(names_from = Response, values_from = Label,
+              names_prefix = "Resp_") %>%
+  arrange(Item)
+
+# Optional: export to CSV for Excel formatting
+write.csv(freq_table_wide, "HRHL_item_frequencies.csv", row.names = FALSE)
+
+# View result
+print(freq_table_wide, n = 20)
+# View the resulting table
+print(freq_table_wide)
 # Splitting the data set -------------------------------------------------
 seed <- 1111
 set.seed(seed)
@@ -71,10 +118,7 @@ HRHLd1a <- sample1[,c("HRHL1", "HRHL2", "HRHL3", "HRHL4", "HRHL7", "HRHL8", "HRH
 HRHLd2a <- sample2[,c("HRHL1", "HRHL2", "HRHL3", "HRHL4", "HRHL7", "HRHL8", "HRHL9",
                     "HRHL10", "HRHL11", "HRHL13", "HRHL14", "HRHL15", "HRHL16", "HRHL18", "HRHL19", "HRHL20")]
 
-# Descriptives and item difficulty --------------------------------------------
-table(data_clean$GENDER)
-describe(data_clean$AGE)
-
+# Item difficulty --------------------------------------------
 tab <- tab_itemscale(HRHLd0)
 str(tab)
 df <- do.call(rbind, tab$df.list)  # Bind all elements together
